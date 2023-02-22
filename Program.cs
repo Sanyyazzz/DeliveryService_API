@@ -1,13 +1,16 @@
-
 using DeliveryService_WebAPI.Models;
+using DeliveryService_WebAPI.Providers;
 
 var builder = WebApplication.CreateBuilder(args);
-
+var defaultPolicy = "defaultPolicy";
 // Add services to the container.
+
+
+builder.Services.AddControllers();
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(name: "defaultPolicy",
+    options.AddPolicy(name: defaultPolicy,
         policy =>
         {
             policy.AllowAnyOrigin()
@@ -16,8 +19,9 @@ builder.Services.AddCors(options =>
         });
 });
 
-builder.Services.AddControllers();
 builder.Services.AddDbContext<DeliveryServiceContext>();
+builder.Services.AddScoped<IOrderManager, OrderManager>();
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -32,6 +36,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors(defaultPolicy);
 
 app.UseAuthorization();
 

@@ -1,4 +1,5 @@
 ﻿using DeliveryService_WebAPI.Models;
+using DeliveryService_WebAPI.Providers;
 using Microsoft.AspNetCore.Mvc;
 using System.Linq;
 
@@ -11,23 +12,18 @@ namespace DeliveryService_WebAPI.Controllers
     public class DeliveryServiceController : ControllerBase
     {
         private DeliveryServiceContext context;
+        private IOrderManager orderManager;
 
-        public DeliveryServiceController(DeliveryServiceContext context)
+        public DeliveryServiceController(DeliveryServiceContext context, IOrderManager orderManager)
         {
             this.context = context;
+            this.orderManager = orderManager;
         }
 
         [HttpGet]
         public IActionResult GetAllProducts()
         {
-            if(context.Products.ToList().Count == 0)
-            {
-                return NoContent();
-            }
-            else
-            {
-                return Ok(context.Products.ToList());
-            }
+            return Ok(context.Products.ToList());
         }            
 
         [HttpGet("{id}")]
@@ -41,34 +37,50 @@ namespace DeliveryService_WebAPI.Controllers
         [HttpGet("user/{id}")]
         public IActionResult GetUser(int id)
         {
-            return Ok(context.Users.Where((p) => p.Id == id).Single());
+            var userFromDb = context.Users.Where((p) => p.Id == id).Single();
+
+            if (userFromDb != null)
+            {                
+                var userToClient = new UserToClient(userFromDb);
+
+                var usersOrderHistory = context.OrderHistories.Where(h => h.UserId == userToClient.Id).ToList();
+                userToClient.OrderHistory = usersOrderHistory;
+
+                return Ok(userToClient);
+            }
+            else
+            {
+                return NotFound();
+            }
         }
 
         [HttpPost]
         public async Task<IActionResult> AddOrder([FromBody] InputOrder inputOrder)
         {
-            var deliveryCost = 40; //static cost for all order            
-            var order = new OrderHistory(inputOrder);
-            var orderList = new List<ItemInOrderList>();
-
-            order.TotalPrice += deliveryCost;
-
-            context.OrderHistories.Add(order);
-            await context.SaveChangesAsync();
-                        
-            if(order.Id == 0)
+            if (ModelState.IsValid)
             {
-                return BadRequest();
+                var addedOrder = await orderManager.AddOrderAndOrderListToDB(inputOrder);
+                return Ok(addedOrder);
             }
-            else
+            return BadRequest();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> CancelOrder(int id)
+        {
+            var order = await context.OrderHistories.FindAsync(id);
+            
+            if(order != null)
             {
-                inputOrder.OrderList.ForEach((g) => orderList.Add(new ItemInOrderList(order.Id, g)));
-                await context.OrderLists.AddRangeAsync(orderList);
+                var orderList = context.OrderLists.Where((h) => h.OrderId == order.Id);
+                context.OrderLists.RemoveRange(orderList);
+                context.OrderHistories.Remove(order);
 
-                await context.SaveChangesAsync();
+                context.SaveChangesAsync();
+                return Ok();
             }
 
-            return Ok();
+            return NotFound();
         }
     }
 }
